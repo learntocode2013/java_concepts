@@ -1,0 +1,156 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>com.github.learntocode2013</groupId>
+  <artifactId>java_concepts</artifactId>
+  <version>1.0-SNAPSHOT</version>
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <source>24</source>
+                    <target>24</target>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+    <modules>
+      <module>http2checker</module>
+      <module>exception_handling</module>
+      <module>date_and_time</module>
+      <module>sealed_design</module>
+      <module>records_design</module>
+      <module>fluent_expressions</module>
+      <module>functional_pipelines</module>
+    </modules>
+    <packaging>pom</packaging>
+
+  <name>java_concepts</name>
+  <url>http://maven.apache.org</url>
+
+  <properties>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <api-auth-service-client>7.3.9</api-auth-service-client>
+    <scoped-auth-service-client.version>10.3.10</scoped-auth-service-client.version>
+    <edge-auth-service-client.version>1.4.0</edge-auth-service-client.version>
+    <aws.java.sdk.version>2.20.162</aws.java.sdk.version>
+  </properties>
+
+  <dependencies>
+      <dependency>
+          <groupId>com.fasterxml.jackson.core</groupId>
+          <artifactId>jackson-databind</artifactId>
+          <version>2.14.0</version>
+      </dependency>
+      <!-- https://mvnrepository.com/artifact/com.fasterxml.jackson.module/jackson-modules-java8 -->
+      <dependency>
+          <groupId>com.fasterxml.jackson.module</groupId>
+          <artifactId>jackson-modules-java8</artifactId>
+          <version>2.14.1</version>
+          <type>pom</type>
+          <scope>runtime</scope>
+      </dependency>
+      <dependency>
+          <groupId>com.fasterxml.jackson.datatype</groupId>
+          <artifactId>jackson-datatype-jsr310</artifactId>
+          <version>2.14.1</version>
+      </dependency>
+      <dependency>
+          <groupId>org.apache.commons</groupId>
+          <artifactId>commons-lang3</artifactId>
+          <version>3.4</version>
+      </dependency>
+    <dependency>
+      <groupId>com.twilio</groupId>
+      <artifactId>api-auth-service-client</artifactId>
+      <version>${api-auth-service-client}</version>
+    </dependency>
+
+
+    <dependency>
+      <groupId>com.twilio.sdk</groupId>
+      <artifactId>twilio</artifactId>
+      <version>10.1.0</version>
+    </dependency>
+    <dependency>
+      <groupId>com.twilio</groupId>
+      <artifactId>scoped-auth-service-client</artifactId>
+      <version>${scoped-auth-service-client.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>com.twilio</groupId>
+      <artifactId>edge-auth-service-client</artifactId>
+      <version>${edge-auth-service-client.version}</version>
+      <exclusions>
+        <exclusion>
+          <groupId>javax.ws.rs</groupId>
+          <artifactId>javax.ws.rs-api</artifactId>
+        </exclusion>
+      </exclusions>
+    </dependency>
+    <dependency>
+      <groupId>com.twilio</groupId>
+      <artifactId>account-service-client-v3</artifactId>
+      <version>10.0.28</version>
+    </dependency>
+
+    <dependency>
+      <groupId>com.twilio</groupId>
+      <artifactId>access-control-service-client</artifactId>
+      <version>2.13.64</version>
+      <exclusions>
+        <exclusion>
+          <groupId>org.projectlombok</groupId>
+          <artifactId>lombok</artifactId>
+        </exclusion>
+      </exclusions>
+    </dependency>
+
+    <dependency>
+      <groupId>org.projectlombok</groupId>
+      <artifactId>lombok</artifactId>
+      <version>1.18.38</version>
+    </dependency>
+
+    <!-- Added dependency for DynamoDB streams -->
+    <dependency>
+      <groupId>com.amazonaws</groupId>
+      <artifactId>dynamodb-streams-kinesis-adapter</artifactId>
+      <version>1.6.0</version>
+    </dependency>
+    <dependency>
+      <groupId>com.github.ben-manes.caffeine</groupId>
+      <artifactId>caffeine</artifactId>
+      <version>3.1.8</version>
+    </dependency>
+
+  </dependencies>
+  <!-- ============================= -->
+  <!-- REPOSITORIES -->
+  <!-- ============================= -->
+  <repositories>
+    <repository>
+      <id>twilio.mvn</id>
+      <url>https://repo.maven.apache.org/maven2</url>
+      <releases>
+        <enabled>true</enabled>
+      </releases>
+      <snapshots>
+        <enabled>true</enabled>
+      </snapshots>
+    </repository>
+    <repository>
+      <id>twilio.nexus</id>
+      <url>https://nexus.corp.twilio.com/content/groups/public</url>
+      <releases>
+        <enabled>true</enabled>
+      </releases>
+      <snapshots>
+        <enabled>true</enabled>
+      </snapshots>
+    </repository>
+  </repositories>
+</project>
