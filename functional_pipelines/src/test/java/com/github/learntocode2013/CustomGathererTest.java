@@ -1,5 +1,6 @@
 package com.github.learntocode2013;
 
+import java.util.Locale;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 
@@ -20,5 +21,17 @@ public class CustomGathererTest {
         .gather(UsingGatherers.peekInOrder(System.out::println))
         .reduce(0, Integer::sum);
     System.out.printf("[Using peekInOrder] Sum: %d %s",  sum, LS);
+  }
+
+  @Test
+  void demo_sequential_stateful_gatherer() {
+    System.out.println("-----------sequential_stateful_gatherer---------");
+    Stream.of("Nick", "Tomas", "Venket", "Dibakar", "Frank")
+        .parallel()
+        .filter(n -> n.length() > 4)
+        .gather(UsingGatherers.<String,String>mapWithIndex(
+            e -> e.toUpperCase(Locale.ENGLISH)))
+        .forEachOrdered(System.out::println);
+    System.out.println("--------------------------");
   }
 }
