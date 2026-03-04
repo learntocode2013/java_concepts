@@ -3,10 +3,14 @@ package com.github.learntocode2013;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.stream.Gatherer;
+import java.util.stream.Gatherer.Downstream;
 import lombok.NonNull;
 
 public class UsingGatherers {
+  private static final String LS = System.lineSeparator();
+
   public static <T> boolean consumeAndPush(
       T element,
       Consumer<T> consumer,
@@ -40,5 +44,26 @@ public class UsingGatherers {
                 index.getAndIncrement()
             ))
         );
+  }
+
+  public static <T> Gatherer<T, ?, T> takeAnyOneMatching(
+      Predicate<T> predicate) {
+    return Gatherer.of((_, element, downstream)
+        -> pushIfMatch(predicate, element, downstream));
+  }
+
+  private static <T> boolean pushIfMatch(
+      Predicate<T> predicate,
+      T element,
+      Downstream<? super T> downstream) {
+    if (predicate.test(element)) {
+      downstream.push(element);
+      System.out.printf("Thread: %s | Element pushed: %s %s",
+          Thread.currentThread().getName(),
+          element,
+          LS);
+      return false;
+    }
+    return true;
   }
 }

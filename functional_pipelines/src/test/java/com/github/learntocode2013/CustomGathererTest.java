@@ -2,6 +2,7 @@ package com.github.learntocode2013;
 
 import java.util.Locale;
 import java.util.stream.Stream;
+import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
 public class CustomGathererTest {
@@ -33,5 +34,19 @@ public class CustomGathererTest {
             e -> e.toUpperCase(Locale.ENGLISH)))
         .forEachOrdered(System.out::println);
     System.out.println("--------------------------");
+  }
+
+  @Test
+  void demo_parallel_stateless_gatherer() {
+    System.out.println("-----------parallel_stateless_gatherer---------");
+    Stream.of(10, 11, 15, 17, 21, 25, 27, 55, 60)
+        .parallel()
+        .gather(UsingGatherers.<Integer>takeAnyOneMatching(
+            e -> e > 25))
+        .map(e -> e * 10)
+        .peek(System.out::println)
+        .findFirst()
+        .ifPresent(val -> Assertions.assertEquals(270, val));
+    System.out.println();
   }
 }
