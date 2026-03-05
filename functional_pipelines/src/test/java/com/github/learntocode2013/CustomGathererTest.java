@@ -1,5 +1,7 @@
 package com.github.learntocode2013;
 
+import com.github.learntocode2013.UsingGatherers.Person;
+import java.util.List;
 import java.util.Locale;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Assertions;
@@ -48,5 +50,22 @@ public class CustomGathererTest {
         .findFirst()
         .ifPresent(val -> Assertions.assertEquals(270, val));
     System.out.println();
+  }
+
+  @Test
+  void demo_parallel_stateful_gatherer() {
+    System.out.println("-----------parallel_stateful_gatherer---------");
+    var people = List.of(
+        new Person("Tracy Zhang", 19),
+        new Person("Shekhar Ghemawat", 18),
+        new Person("Nick Tune", 45),
+        new Person("Dibakar Sen", 42),
+        new Person("Venket", 52),
+        new Person("Frank Schulz", 53),
+        new Person("Frank Grecco", 60),
+        new Person("Martin Fowler", 62)
+    );
+    UsingGatherers.useDistinctByParallel(people)
+        .forEach(System.out::println);
   }
 }
