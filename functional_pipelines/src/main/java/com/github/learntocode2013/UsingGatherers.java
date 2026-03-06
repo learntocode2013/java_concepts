@@ -1,6 +1,6 @@
 package com.github.learntocode2013;
 
-import java.util.ArrayList;
+import java.time.Duration;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -11,8 +11,9 @@ import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.Gatherer;
 import java.util.stream.Gatherer.Downstream;
+import java.util.stream.Gatherers;
+import java.util.stream.Stream;
 import lombok.NonNull;
-import org.checkerframework.checker.units.qual.C;
 
 public class UsingGatherers {
   private static final String LS = System.lineSeparator();
@@ -149,4 +150,22 @@ public class UsingGatherers {
 
   }
 
+  public record Movie(String name, int rating, Duration duration) {}
+
+  public static List<Duration> totalDurationOfMovieBatch(Stream<Movie> movies, int batchSize) {
+    return movies
+        .filter(movie -> movie.rating() >= 3)
+        .gather(Gatherers.windowFixed(batchSize))
+        .gather(Gatherers.scan(
+            () -> Duration.ZERO,
+            (avgSoFar, window) -> window.getFirst()
+                .duration()
+                .plus(window.getLast().duration())
+            )
+        )
+        .peek(d ->
+            System.out.printf("Total duration of %d movies: %s hours %s",
+                batchSize,d.toHours(), LS))
+        .toList();
+  }
 }
