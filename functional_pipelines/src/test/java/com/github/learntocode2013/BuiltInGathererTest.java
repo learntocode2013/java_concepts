@@ -1,11 +1,17 @@
 package com.github.learntocode2013;
 
+import static com.github.learntocode2013.UsingGatherers.totalDurationOfMovieBatch;
+
+import com.github.learntocode2013.UsingGatherers.Movie;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
+import java.util.List;
 import java.util.stream.Gatherer;
 import java.util.stream.Gatherers;
 import java.util.stream.Stream;
+import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
@@ -80,6 +86,26 @@ public class BuiltInGathererTest {
         .flatMap(Collection::stream)
         .forEach(e ->
             System.out.printf("**Sum of window elems: %d %s", e, LS));
+  }
+
+  @Test
+  void demo_builtin_gatherer_chaining() {
+    var movies = List.of(
+        new Movie("Forest Gump", 5, Duration.ofHours(6)),
+        new Movie("Shawshank Redemption", 5, Duration.ofHours(4)),
+        new Movie("Pursuit to happiness", 4, Duration.ofHours(3)),
+        new Movie("Terminator", 4, Duration.ofHours(3)),
+        new Movie("StarWars", 3, Duration.ofHours(3))
+    );
+    int batchSize = 4;
+    var durationLst = totalDurationOfMovieBatch(movies.stream(), batchSize);
+    var expectedResultSize = ((movies.size() % batchSize) > 0 ? 1 : 0) + movies.size()/batchSize;
+    Assertions.assertEquals(expectedResultSize, durationLst.size());
+    for(var i = 0; i < durationLst.size(); i++) {
+      System.out.printf("Batch: %d | Total watch hours needed: %s %s", i + 1,
+          durationLst.get(i).toHours(),
+          LS);
+    }
   }
 
   private Gatherer<? super Integer,?, Integer> redundantMap() {
