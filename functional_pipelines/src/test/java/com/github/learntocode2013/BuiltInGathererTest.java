@@ -1,7 +1,11 @@
 package com.github.learntocode2013;
 
+import static com.github.learntocode2013.UsingGatherers.totalDurationOfMovieBatch;
+
+import com.github.learntocode2013.UsingGatherers.Movie;
 import com.github.learntocode2013.GathererForTrading.Tick;
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.Month;
 import java.util.ArrayList;
@@ -13,13 +17,11 @@ import java.util.stream.Gatherers;
 import java.util.stream.IntStream;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Assertions;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 public class BuiltInGathererTest {
   private static final String LS = System.lineSeparator();
   @Test
-  @Disabled
   void basicPipeline() {
     var total = Stream.of(1, 2, 4, 5, 6, 3, 7, 8, 9, 10)
         .takeWhile(e -> e != 3)
@@ -30,7 +32,6 @@ public class BuiltInGathererTest {
   }
 
   @Test
-  @Disabled
   void demo_gatherer_using_custom_map_operation() {
     Stream.of(1, 2, 3, 4)
         .gather(redundantMap())
@@ -38,7 +39,6 @@ public class BuiltInGathererTest {
   }
 
   @Test
-  @Disabled
   void demo_fold_builtIn_gatherer() {
     Stream.of(1, 2, 4, 5, 6, 3, 7, 8, 9, 10)
         .takeWhile(e -> e != 3)
@@ -49,7 +49,6 @@ public class BuiltInGathererTest {
   }
 
   @Test
-  @Disabled
   void demo_scan_builtIn_gatherer() {
     Stream.of(1, 2, 4, 5, 6, 3, 7, 8, 9, 10)
         .takeWhile(e -> e != 3)
@@ -63,7 +62,6 @@ public class BuiltInGathererTest {
   }
 
   @Test
-  @Disabled
   void demo_fixed_window_gatherer_builtIn_gatherer() {
     Stream.of(1, 2, 3, 4, 5)
         .gather(Gatherers.windowFixed(3))
@@ -206,6 +204,26 @@ public class BuiltInGathererTest {
     var ohlcBars = GathererForTrading.ticksToOHLCBar(tickerMovements, 100);
     Assertions.assertEquals(1000/aggregateSize, ohlcBars.size());
     ohlcBars.forEach(System.out::println);
+  }
+
+  @Test
+  void demo_builtin_gatherer_chaining() {
+    var movies = List.of(
+        new Movie("Forest Gump", 5, Duration.ofHours(6)),
+        new Movie("Shawshank Redemption", 5, Duration.ofHours(4)),
+        new Movie("Pursuit to happiness", 4, Duration.ofHours(3)),
+        new Movie("Terminator", 4, Duration.ofHours(3)),
+        new Movie("StarWars", 3, Duration.ofHours(3))
+    );
+    int batchSize = 4;
+    var durationLst = totalDurationOfMovieBatch(movies.stream(), batchSize);
+    var expectedResultSize = ((movies.size() % batchSize) > 0 ? 1 : 0) + movies.size()/batchSize;
+    Assertions.assertEquals(expectedResultSize, durationLst.size());
+    for(var i = 0; i < durationLst.size(); i++) {
+      System.out.printf("Batch: %d | Total watch hours needed: %s %s", i + 1,
+          durationLst.get(i).toHours(),
+          LS);
+    }
   }
 
   private Gatherer<? super Integer,?, Integer> redundantMap() {
