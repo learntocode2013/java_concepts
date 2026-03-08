@@ -1,7 +1,9 @@
 package com.github.learntocode2013;
 
+import static com.github.learntocode2013.GathererForProductRecommendation.generateRecommendations;
 import static com.github.learntocode2013.UsingGatherers.totalDurationOfMovieBatch;
 
+import com.github.learntocode2013.GathererForProductRecommendation.ProductView;
 import com.github.learntocode2013.UsingGatherers.Movie;
 import com.github.learntocode2013.GathererForTrading.Tick;
 import java.math.BigDecimal;
@@ -224,6 +226,35 @@ public class BuiltInGathererTest {
           durationLst.get(i).toHours(),
           LS);
     }
+  }
+
+  @Test
+  void demo_sliding_window_for_product_recommendation() {
+    var electronicProductViews = IntStream.rangeClosed(1,20)
+        .mapToObj(i -> new ProductView(
+            "Dibakar", "SKU-E-"+i, "Electronics",
+            LocalDateTime.now())).toList();
+
+    var bookProductViews = IntStream.rangeClosed(1,20)
+        .mapToObj(i -> new ProductView(
+            "Dibakar", "SKU-B-"+i, "Books",
+            LocalDateTime.now())).toList();
+    var groceryProductViews = IntStream.rangeClosed(1,10)
+        .mapToObj(i -> new ProductView(
+            "Dibakar", "SKU-G-"+i, "Grocery",
+            LocalDateTime.now())).toList();
+    var productViews = new ArrayList<ProductView>();
+    productViews.addAll(electronicProductViews);
+    productViews.addAll(bookProductViews);
+    productViews.addAll(groceryProductViews);
+    System.out.printf("Analyzing a stream of %d product views for recommendation %s",
+        productViews.size(), LS);
+    var recommendations = generateRecommendations(
+        productViews.stream(),
+        20);
+    Assertions.assertFalse(recommendations.isEmpty());
+    System.out.println("--- You might also be interested in ---");
+    recommendations.forEach(System.out::println);
   }
 
   private Gatherer<? super Integer,?, Integer> redundantMap() {
