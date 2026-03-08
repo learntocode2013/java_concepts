@@ -3,6 +3,8 @@ package com.github.learntocode2013;
 import static com.github.learntocode2013.GathererForProductRecommendation.generateRecommendations;
 import static com.github.learntocode2013.UsingGatherers.totalDurationOfMovieBatch;
 
+import com.github.learntocode2013.GathererForOrderProcessing.Order;
+import com.github.learntocode2013.GathererForOrderProcessing.Priority;
 import com.github.learntocode2013.GathererForProductRecommendation.ProductView;
 import com.github.learntocode2013.UsingGatherers.Movie;
 import com.github.learntocode2013.GathererForTrading.Tick;
@@ -255,6 +257,18 @@ public class BuiltInGathererTest {
     Assertions.assertFalse(recommendations.isEmpty());
     System.out.println("--- You might also be interested in ---");
     recommendations.forEach(System.out::println);
+  }
+
+  @Test
+  void demo_composite_gatherer_for_order_processing() {
+    Stream<Order> orders = IntStream.rangeClosed(1,100)
+        .mapToObj(i -> new Order(
+            "order-"+i,
+            i%2 == 0 ? "zone-a" : "zone-b",
+            i,
+            i%2 == 0 ? Priority.EXPRESS: Priority.STANDARD
+        ));
+    GathererForOrderProcessing.processWarehouseOrders(orders, 30);
   }
 
   private Gatherer<? super Integer,?, Integer> redundantMap() {
