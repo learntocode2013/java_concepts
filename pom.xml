@@ -19,12 +19,13 @@
     </build>
     <modules>
       <module>http2checker</module>
-      <module>exception_handling</module>
+<!--      <module>exception_handling</module>-->
       <module>date_and_time</module>
       <module>sealed_design</module>
       <module>records_design</module>
       <module>fluent_expressions</module>
       <module>functional_pipelines</module>
+        <module>db_partitioning</module>
     </modules>
     <packaging>pom</packaging>
 
@@ -37,6 +38,7 @@
     <scoped-auth-service-client.version>10.3.10</scoped-auth-service-client.version>
     <edge-auth-service-client.version>1.4.0</edge-auth-service-client.version>
     <aws.java.sdk.version>2.20.162</aws.java.sdk.version>
+    <junit5.version>6.0.3</junit5.version>
   </properties>
 
   <dependencies>
@@ -87,6 +89,12 @@
       <artifactId>caffeine</artifactId>
       <version>3.1.8</version>
     </dependency>
+    <dependency>
+        <groupId>org.junit.jupiter</groupId>
+        <artifactId>junit-jupiter-engine</artifactId>
+        <version>${junit5.version}</version>
+        <scope>test</scope>
+      </dependency>
 
   </dependencies>
   <!-- ============================= -->
