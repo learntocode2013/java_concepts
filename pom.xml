@@ -25,9 +25,9 @@
       <module>records_design</module>
       <module>fluent_expressions</module>
       <module>functional_pipelines</module>
-        <module>db_partitioning</module>
-        <module>cqrs_read_side</module>
-        <module>event_sourcing</module>
+      <module>db_partitioning</module>
+      <module>event_sourcing</module>
+      <module>cqrs_model_updater</module>
     </modules>
     <packaging>pom</packaging>
 
@@ -40,27 +40,28 @@
     <scoped-auth-service-client.version>10.3.10</scoped-auth-service-client.version>
     <edge-auth-service-client.version>1.4.0</edge-auth-service-client.version>
     <aws.java.sdk.version>2.20.162</aws.java.sdk.version>
-    <junit5.version>6.0.3</junit5.version>
+    <junit5.version>5.11.4</junit5.version>
+    <jackson.version>2.18.2</jackson.version>
   </properties>
 
   <dependencies>
       <dependency>
           <groupId>com.fasterxml.jackson.core</groupId>
           <artifactId>jackson-databind</artifactId>
-          <version>2.14.0</version>
+          <version>${jackson.version}</version>
       </dependency>
       <!-- https://mvnrepository.com/artifact/com.fasterxml.jackson.module/jackson-modules-java8 -->
       <dependency>
           <groupId>com.fasterxml.jackson.module</groupId>
           <artifactId>jackson-modules-java8</artifactId>
-          <version>2.14.1</version>
+          <version>${jackson.version}</version>
           <type>pom</type>
           <scope>runtime</scope>
       </dependency>
       <dependency>
           <groupId>com.fasterxml.jackson.datatype</groupId>
           <artifactId>jackson-datatype-jsr310</artifactId>
-          <version>2.14.1</version>
+          <version>${jackson.version}</version>
       </dependency>
       <dependency>
           <groupId>org.apache.commons</groupId>
