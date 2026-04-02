@@ -26,6 +26,8 @@
       <module>fluent_expressions</module>
       <module>functional_pipelines</module>
         <module>db_partitioning</module>
+        <module>cqrs_read_side</module>
+        <module>event_sourcing</module>
     </modules>
     <packaging>pom</packaging>
 
