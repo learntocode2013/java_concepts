@@ -1,0 +1,26 @@
+spring:
+  # Command side: PostgreSQL
+  datasource:
+    write:
+      jdbc-url: jdbc:postgresql://localhost:5432/order_db
+      username: user
+      password: pass
+      driver-class-name: org.postgresql.Driver
+  # Query side: ClickHouse
+  clickhouse:
+    jdbc-url: jdbc:ch://localhost:8123/default?compress=0
+    user: default
+    password: "clickhouse"
+  # Messaging: kafka
+  kafka:
+    bootstrap-servers: localhost:9094
+    consumer:
+      group-id: order-projection-group
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+  #Enable JPA for postgres
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
