@@ -1,14 +1,24 @@
-This hands-on exercise guide is designed to take you from a standard state-based "Monolithic" model to a fully decoupled **Event Sourcing** architecture. [cite_start]We will use **Spring Boot**, **Kafka** (as the immutable event log), **PostgreSQL** (for snapshots), and **ClickHouse** (for the read model)[cite: 15, 16, 30].
+This comprehensive guide provides the complete technical and operational steps to transition from a state-based monolith to a fully decoupled **Event Sourcing** architecture. [cite_start]In this exercise, a single Spring Boot service handles the entire lifecycle: persisting state in **PostgreSQL**, publishing domain events to **Kafka**, and projecting those events into **ClickHouse** read models[cite: 559, 560, 561].
 
 ---
 
-## **Part 1: The Infrastructure (Docker Setup)**
-[cite_start]**Reasoning:** Event sourcing requires an immutable log that persists "forever" so we can replay history to build new models[cite: 16, 480]. We use Kafka with specific configurations to act as this log.
+# **Hands-On Exercise: Transitioning to Event Sourcing**
+
+## **1. Infrastructure Setup: Docker Compose**
+[cite_start]**Reasoning:** Event sourcing requires an immutable log (Kafka) and specialized storage for snapshots (Postgres) and read models (ClickHouse)[cite: 16, 581, 582, 651]. [cite_start]By using Kafka with high retention, you preserve a "narrative" of every change[cite: 486].
 
 **`docker-compose.yml`**
 ```yaml
 services:
-  kafka:
+  postgres: # Snapshot & Command Store
+    image: postgres:15
+    environment:
+      - POSTGRES_USER=user
+      - POSTGRES_PASSWORD=pass
+      - POSTGRES_DB=order_db
+    ports: ["5432:5432"]
+
+  kafka: # Immutable Event Log
     image: bitnami/kafka:latest
     environment:
       - KAFKA_CFG_NODE_ID=1
@@ -18,18 +28,64 @@ services:
       - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://localhost:9092
     ports: ["9092:9092"]
 
-  clickhouse: # The Read Model Store
+  clickhouse: # Read Model Store
     image: clickhouse/clickhouse-server:latest
     ports: ["8123:8123"]
 ```
 
 ---
 
-## **Part 2: Maven Dependencies**
-[cite_start]**Reasoning:** We need `spring-kafka` for the event log interactions and `jackson` to handle polymorphic event serialization (storing different event types in one stream)[cite: 639, 642].
+## **2. Database & Kafka Initialization**
+[cite_start]**Reasoning:** We must prepare schemas for the "Command" state and specialized "Read" projections[cite: 550, 730].
 
+### **2.1 Initialize PostgreSQL (Command Store)**
+```bash
+docker exec -it $(docker ps -qf "name=postgres") psql -U user -d order_db -c "
+CREATE TABLE orders (
+    id UUID PRIMARY KEY,
+    customer_id VARCHAR(255),
+    amount DECIMAL,
+    status VARCHAR(50)
+);"
+```
+
+### **2.2 Initialize ClickHouse (Read Models)**
+[cite_start]**Reasoning:** We use specialized engines like `SummingMergeTree` to handle background aggregations for the Loyalty model[cite: 745].
+```bash
+docker exec -it $(docker ps -qf "name=clickhouse") clickhouse-client --query "
+CREATE TABLE order_dashboard (id UUID, amount Float64, status String, updated_at DateTime DEFAULT now()) 
+ENGINE = ReplacingMergeTree(updated_at) ORDER BY id;
+
+CREATE TABLE loyalty_points (customer_id String, points Float64, updated_at DateTime DEFAULT now()) 
+ENGINE = SummingMergeTree() ORDER BY customer_id;"
+```
+
+### **2.3 Create Kafka Topic & Verify**
+```bash
+# Create Topic
+docker exec -it $(docker ps -qf "name=kafka") /opt/bitnami/kafka/bin/kafka-topics.sh \
+--create --topic order-events --bootstrap-server localhost:9092
+
+# Command to watch raw events in real-time
+docker exec -it $(docker ps -qf "name=kafka") /opt/bitnami/kafka/bin/kafka-console-consumer.sh \
+--bootstrap-server localhost:9092 --topic order-events --from-beginning
+```
+
+---
+
+## **3. Java Implementation (Spring Boot)**
+
+### **3.1 Maven Dependencies (`pom.xml`)**
 ```xml
 <dependencies>
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-web</artifactId>
+    </dependency>
+    <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-data-jpa</artifactId>
+    </dependency>
     <dependency>
         <groupId>org.springframework.kafka</groupId>
         <artifactId>spring-kafka</artifactId>
@@ -40,98 +96,105 @@ services:
         <version>0.6.0</version>
     </dependency>
     <dependency>
-        <groupId>com.fasterxml.jackson.core</groupId>
-        <artifactId>jackson-databind</artifactId>
+        <groupId>org.postgresql</groupId>
+        <artifactId>postgresql</artifactId>
     </dependency>
 </dependencies>
 ```
 
----
-
-## **Part 3: Defining Immutable Domain Events**
-[cite_start]**Reasoning:** In a monolith, we only store the *latest* state[cite: 474, 525]. [cite_start]In event sourcing, we store the *intent*—the individual actions that occurred[cite: 480, 618].
-
-**DomainEvent.java**
-```java
-@JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type")
-@JsonSubTypes({
-    @JsonSubTypes.Type(value = OrderPlaced.class, name = "OrderPlaced"),
-    @JsonSubTypes.Type(value = PaymentConfirmed.class, name = "PaymentConfirmed")
-})
-public interface DomainEvent {
-    UUID getOrderId();
-    Instant getOccurredAt();
-}
-
-public record OrderPlaced(UUID orderId, String customerId, Double amount, Instant occurredAt) implements DomainEvent {
-    public UUID getOrderId() { return orderId; }
-    public Instant getOccurredAt() { return occurredAt; }
-}
+### **3.2 Application Configuration (`application.yml`)**
+```yaml
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/order_db
+    username: user
+    password: pass
+  clickhouse:
+    url: jdbc:clickhouse://localhost:8123/default
+  kafka:
+    bootstrap-servers: localhost:9092
+    producer:
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+    consumer:
+      group-id: event-sourcing-group
+      auto-offset-reset: earliest
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: "*"
 ```
 
----
+### **3.3 Command Controller & Model Updater**
+[cite_start]**Reasoning:** We capture the *intent* of the change as an immutable event to allow for future auditability and replayability[cite: 546, 547].
 
-## **Part 4: The Model Updater (Real-Time Projection)**
-[cite_start]**Reasoning:** Because we no longer have a "current state" table in the write DB, we use a Real-Time Model Updater to project events into a Read Database for the UI[cite: 561, 620].
-
-**RealTimeProjector.java**
 ```java
+@RestController
+@RequestMapping("/orders")
+public class OrderCommandController {
+    @Autowired private OrderRepository repository;
+    @Autowired private KafkaTemplate<String, Object> kafka;
+
+    @PostMapping
+    public void placeOrder(@RequestBody OrderRequest req) {
+        UUID id = UUID.randomUUID();
+        // Persist Snapshot in Postgres
+        repository.save(new OrderEntity(id, req.customerId(), req.amount(), "PLACED"));
+        // Emit Domain Event to Kafka
+        kafka.send("order-events", id.toString(), new OrderPlaced(id, req.customerId(), req.amount()));
+    }
+}
+
 @Service
-public class RealTimeProjector {
+public class OrderProjector {
     @Autowired private JdbcTemplate clickhouse;
 
-    @KafkaListener(topics = "order-events", groupId = "live-dashboard-group")
-    public void consume(DomainEvent event) {
-        if (event instanceof OrderPlaced op) {
-            // Projecting to a flattened ClickHouse table for speed
-            clickhouse.update("INSERT INTO order_dashboard (id, amount, status) VALUES (?, ?, ?)", 
-                op.orderId(), op.amount(), "PLACED");
-        }
+    @KafkaListener(topics = "order-events")
+    public void project(OrderPlaced event) {
+        // Real-time projection to ClickHouse
+        clickhouse.update("INSERT INTO order_dashboard (id, amount, status) VALUES (?, ?, ?)", 
+            event.orderId(), event.amount(), "PLACED");
     }
 }
 ```
-[cite_start] [cite: 612]
 
 ---
 
-## **Part 5: Event Replay (Building a New Read Model)**
-**Reasoning:** This is the "Superpower" of event sourcing. [cite_start]If the business asks for a new "Loyalty Points" report six months later, we don't have to worry that we weren't "tracking" points—we just replay all historical events[cite: 562, 626, 627].
+## **4. Event Replay Implementation**
+[cite_start]**Reasoning:** The `replayHistory()` function creates a temporary consumer to scan the entire immutable log from Offset 0, allowing us to build new read models (like Loyalty) from historical data[cite: 562, 566, 631].
 
-**LoyaltyReplayService.java**
 ```java
 @Service
-public class LoyaltyReplayService {
-    public void rebuildLoyaltyModel() {
-        // 1. Create a new, empty Loyalty table
-        // 2. Seek Kafka consumer to 'beginning' (offset 0)
-        // 3. Process every historical event to calculate points
-    }
+public class LoyaltyReplayer {
+    @Autowired private JdbcTemplate clickhouse;
+    @Autowired private KafkaProperties kafkaProperties;
+    @Autowired private ObjectMapper objectMapper;
 
-    @KafkaListener(topics = "order-events", groupId = "loyalty-replay-group", 
-                   id = "loyalty-replayer", autoStartup = "false")
-    public void replay(DomainEvent event) {
-        if (event instanceof PaymentConfirmed pc) {
-            // Logic: 1 point for every $10 spent
-            updateLoyaltyTable(pc.customerId(), pc.amount() / 10);
-        }
+    public void replayHistory() {
+        Map<String, Object> props = kafkaProperties.buildConsumerProperties();
+        props.put(ConsumerConfig.GROUP_ID_CONFIG, "loyalty-rebuild-" + UUID.randomUUID());
+        
+        try (KafkaConsumer<String, String> consumer = new KafkaConsumer<>(props)) {
+            TopicPartition partition = new TopicPartition("order-events", 0);
+            consumer.assign(Collections.singletonList(partition));
+            consumer.seekToBeginning(Collections.singletonList(partition));
+
+            while (true) {
+                ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(1000));
+                if (records.isEmpty()) break; // Replay caught up to current head
+
+                for (ConsumerRecord<String, String> record : records) {
+                    OrderPlaced event = objectMapper.readValue(record.value(), OrderPlaced.class);
+                    double points = event.amount() / 10.0;
+                    // Rebuild the new Loyalty read model
+                    clickhouse.update("INSERT INTO loyalty_points (customer_id, points) VALUES (?, ?)",
+                        event.customerId(), points);
+                }
+            }
+        } catch (Exception e) { /* Handle log error */ }
     }
 }
 ```
-[cite_start] [cite: 612]
 
----
-
-## **Summary of the Transition**
-
-| Feature | Monolithic (State-Based) | Event Sourcing |
-| :--- | :--- | :--- |
-| **Primary Data** | [cite_start]Current snapshot only [cite: 474] | [cite_start]Immutable history of changes [cite: 480] |
-| **Audit Trail** | [cite_start]Requires separate audit tables [cite: 537] | [cite_start]Native and built-in [cite: 485] |
-| **New Reports** | [cite_start]Hard (data might be missing) [cite: 478] | [cite_start]Easy (replay all history) [cite: 627] |
-| **Complexity** | [cite_start]Simple but rigid [cite: 8, 34] | [cite_start]Higher operational overhead [cite: 636, 637] |
-
-### **How to Save as PDF**
-As an AI, I provide the content in Markdown format. To create the final PDF:
-1.  Copy this response into a text editor (e.g., VS Code or Obsidian).
-2.  Use a "Markdown to PDF" extension or simply use **Print > Save as PDF** from your browser.
-3.  This ensures all code formatting and visualizations remain intact for your team.
+### **Summary of the Transition**
+* [cite_start]**Single Service**: A single Spring Boot service handles transactional writes to Postgres and analytical projections to ClickHouse[cite: 19].
+* [cite_start]**History Preservation**: Kafka preserves every business event indefinitely, providing a full historical record[cite: 557, 646].
+* [cite_start]**Flexibility**: New read models can be derived as needed by replaying the event log, ensuring the system is future-proof[cite: 550, 634, 648].
