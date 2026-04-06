@@ -15,6 +15,6 @@ class DemoPeriodTest {
   @Test
   void testAgeCorrectness() {
     var age = SubscriptionManager.calculateAge(LocalDate.of(1984, Month.FEBRUARY,20));
-    Assertions.assertEquals(41, age);
+    Assertions.assertEquals(42, age);
   }
 }

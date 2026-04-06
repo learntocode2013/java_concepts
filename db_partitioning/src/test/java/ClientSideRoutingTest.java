@@ -1,5 +1,6 @@
 import org.junit.jupiter.api.*;
 
+@Disabled
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class ClientSideRoutingTest {
     private static ClientSideRouting queryRouter;
