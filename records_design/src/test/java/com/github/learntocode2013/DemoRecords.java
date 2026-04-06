@@ -50,8 +50,8 @@ public class DemoRecords {
     for(RecordComponent component : klaz.getRecordComponents()) {
       var name = component.getName();
       var type = component.getType();
-      var value = component.getAccessor().invoke(bangalore);
-      System.out.printf("%s %s has value: %s \n", type, name, value);
+      Try.of(() -> component.getAccessor().invoke(bangalore))
+              .onSuccess(value -> System.out.printf("%s %s has value: %s \n", type, name, value));
     }
     System.out.println();
   }
