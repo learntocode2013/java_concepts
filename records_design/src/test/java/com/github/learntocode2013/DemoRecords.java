@@ -2,6 +2,8 @@ package com.github.learntocode2013;
 
 import java.lang.reflect.RecordComponent;
 import java.util.List;
+
+import io.vavr.control.Try;
 import lombok.NonNull;
 import lombok.SneakyThrows;
 
@@ -67,7 +69,7 @@ public class DemoRecords {
       var type = component.getType();
       System.out.printf("%s is of type : %s \n", name, type);
     }
-    subject.books().add("Streaming with Java");
+    Try.of(() -> subject.books().add("Streaming with Java")).onFailure(System.err::println);
     System.out.println();
   }
 
