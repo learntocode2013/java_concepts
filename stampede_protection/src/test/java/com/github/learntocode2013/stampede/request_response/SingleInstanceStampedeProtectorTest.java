@@ -16,20 +16,15 @@ import java.util.logging.Logger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
-@TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class SingleInstanceStampedeProtectorTest {
     private static final Logger log = Logger.getLogger(SingleInstanceStampedeProtectorTest.class.getName());
     private static final String CACHE_KEY = "catalog-state-2026-05-01";
     private static final ConcurrentHashMap<String, DomainResponse> RESPONSE_CACHE = new ConcurrentHashMap<>();
-    private static final StampedeProtector protector = new SingleInstanceStampedeProtector();
+    private static final StampedeProtector protector = SingleInstanceStampedeProtector.getInstance();
     private static final Supplier<DomainResponse> valueSupplierFromCache = () -> RESPONSE_CACHE.get("catalog-state-2026-05-01");
     private static final Supplier<DomainResponse> valueSupplierOnCacheMiss = () -> fetchFromCatalogService("2026-05-01", CACHE_KEY)
             .getOrNull();
     private static final AtomicInteger DEPENDENCY_INVOCATION_COUNTER = new AtomicInteger(0);
-
-    @BeforeAll
-    static void setUp() {
-    }
 
     @AfterAll
     static void tearDown() {
@@ -40,10 +35,10 @@ class SingleInstanceStampedeProtectorTest {
     @AfterEach
     void afterEach() {
         DEPENDENCY_INVOCATION_COUNTER.set(0);
+        RESPONSE_CACHE.clear();
     }
 
     @Test
-    @Order(1)
     @SneakyThrows
     void verifyRequestCoalescingOnCacheMiss() {
         Assertions.assertEquals(0, DEPENDENCY_INVOCATION_COUNTER.get());
@@ -71,12 +66,13 @@ class SingleInstanceStampedeProtectorTest {
     }
 
     @Test
-    @Order(2)
     @SneakyThrows
     void verifyNoInflightRequests_OnCacheHit() {
+        RESPONSE_CACHE.put(CACHE_KEY, new DomainResponse("CATALOG_FULL", "2026-05-01"));
         Assertions.assertEquals(0, DEPENDENCY_INVOCATION_COUNTER.get());
         var parallelRequests = Runtime.getRuntime().availableProcessors();
         List<CompletableFuture<DomainResponse>> futures = Collections.synchronizedList(new ArrayList<>());
+        CountDownLatch latch = new CountDownLatch(parallelRequests);
         try(ExecutorService executorService = Executors.newFixedThreadPool(parallelRequests)) {
             for(int i = 0; i < parallelRequests; i++) {
                 executorService.execute(() -> {
@@ -86,9 +82,11 @@ class SingleInstanceStampedeProtectorTest {
                             valueSupplierOnCacheMiss
                     );
                     futures.add(resultCF);
+                    latch.countDown();
                 });
 
             }
+            latch.await();
             CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
             Assertions.assertTrue(protector.getInFlightRequestForKey(CACHE_KEY).isEmpty());
         } catch (Exception ex) {
