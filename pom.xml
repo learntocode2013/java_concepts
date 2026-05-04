@@ -28,6 +28,7 @@
       <module>db_partitioning</module>
       <module>cqrs_model_updater</module>
       <module>event_sourcing</module>
+      <module>stampede_protection</module>
     </modules>
     <packaging>pom</packaging>
 
