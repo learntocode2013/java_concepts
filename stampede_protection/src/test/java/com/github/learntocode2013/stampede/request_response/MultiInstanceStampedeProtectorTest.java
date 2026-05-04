@@ -23,9 +23,11 @@ import java.util.logging.Logger;
 import static com.github.learntocode2013.stampede.request_response.MultiInstanceStampedeProtector.JOB_STATE_MAP;
 
 // ----------------------------------------------------------------
-// NOTE: Execute the docker command below before running this test.
+// NOTE: Execute the docker command below before uncommenting the
+// Disabled tag to run the tests.
 // docker run -d --name redis-local -p 6379:6379 redis:7.2
 // ---------------------------------------------------------------
+@Disabled
 class MultiInstanceStampedeProtectorTest {
     private static final Logger log = Logger.getLogger(MultiInstanceStampedeProtectorTest.class.getName());
     private static final AtomicInteger DEPENDENCY_INVOCATION_COUNTER = new AtomicInteger(0);
