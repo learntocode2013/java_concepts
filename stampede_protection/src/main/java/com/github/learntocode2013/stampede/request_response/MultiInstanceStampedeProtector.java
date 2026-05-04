@@ -2,7 +2,7 @@ package com.github.learntocode2013.stampede.request_response;
 
 import org.redisson.api.RCountDownLatch;
 import org.redisson.api.RLock;
-import org.redisson.api.RMap;
+import org.redisson.api.RMapCache;
 import org.redisson.api.RedissonClient;
 
 import java.io.Serializable;
@@ -48,7 +48,7 @@ public class MultiInstanceStampedeProtector implements StampedeProtector {
             Supplier<DomainResponse> valueSupplierFromCache,
             Supplier<DomainResponse> valueSupplierOnCacheMiss
     ) {
-        RMap<String, JobState> jobStates  = redisson.getMap(JOB_STATE_MAP);
+        RMapCache<String, JobState> jobStates  = redisson.getMapCache(JOB_STATE_MAP);
         var inFlightJob = jobStates.get(cacheKey);
         if (nonNull(inFlightJob)) {
             if ("COMPLETED".equals(inFlightJob.status())) {
@@ -69,7 +69,8 @@ public class MultiInstanceStampedeProtector implements StampedeProtector {
                         RCountDownLatch latch = redisson.getCountDownLatch(LATCH_PREFIX + cacheKey);
                         latch.trySetCount(1);
                         var newJobState = new JobState("PROCESSING", null);
-                        jobStates.put(cacheKey, newJobState);
+                        // Using a 1-minute TTL for the PROCESSING state as a safety measure
+                        jobStates.put(cacheKey, newJobState, 1, TimeUnit.MINUTES);
                         return startAsyncCacheHydration(cacheKey, valueSupplierOnCacheMiss);
                     }
                     return waitForDistributedJob(cacheKey);
@@ -96,11 +97,12 @@ public class MultiInstanceStampedeProtector implements StampedeProtector {
             String cacheKey,
             Supplier<DomainResponse> valueSupplierOnCacheMiss) {
         return CompletableFuture.supplyAsync(() -> {
-            RMap<String, JobState> jobStates = redisson.getMap(JOB_STATE_MAP);
+            RMapCache<String, JobState> jobStates = redisson.getMapCache(JOB_STATE_MAP);
             RCountDownLatch latch = redisson.getCountDownLatch(LATCH_PREFIX + cacheKey);
             try {
                 var result = valueSupplierOnCacheMiss.get();
-                jobStates.put(cacheKey, new JobState( "COMPLETED", result.responseBody()));
+                // Use a 5-minute TTL to give all "loser" instances time to read the result
+                jobStates.put(cacheKey, new JobState( "COMPLETED", result.responseBody()), 5, TimeUnit.MINUTES);
                 logger.log(Level.INFO, "{0} - Job successfully completed for cache key: {1}",
                         new Object[]{Thread.currentThread().getName(),cacheKey});
                 return new DomainResponse(
@@ -124,13 +126,15 @@ public class MultiInstanceStampedeProtector implements StampedeProtector {
                 RCountDownLatch latch = redisson.getCountDownLatch(LATCH_PREFIX + cacheKey);
                 boolean completed = latch.await(10, TimeUnit.SECONDS);
                 if (completed) {
-                    RMap<String, JobState> jobStates = redisson.getMap(JOB_STATE_MAP);
+                    RMapCache<String, JobState> jobStates = redisson.getMapCache(JOB_STATE_MAP);
                     JobState existingJobState = jobStates.get(cacheKey);
-                    return new DomainResponse(
-                            existingJobState.result(),
-                            cacheKey,
-                            existingJobState.status()
-                    );
+                    if (existingJobState != null) {
+                        return new DomainResponse(
+                                existingJobState.result(),
+                                cacheKey,
+                                existingJobState.status()
+                        );
+                    }
                 }
                 return new DomainResponse(
                         null,
@@ -146,7 +150,7 @@ public class MultiInstanceStampedeProtector implements StampedeProtector {
 
     @Override
     public Optional<CompletableFuture<DomainResponse>> getInFlightRequestForKey(String cachekey) {
-        RMap<String, JobState> jobStates = redisson.getMap(JOB_STATE_MAP);
+        RMapCache<String, JobState> jobStates = redisson.getMapCache(JOB_STATE_MAP);
         var state = jobStates.get(cachekey);
         if (nonNull(state) && "PROCESSING".equals(state.status())) {
             return Optional.of(waitForDistributedJob(cachekey));
