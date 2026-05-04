@@ -68,7 +68,10 @@ class SingleInstanceStampedeProtectorTest {
     @Test
     @SneakyThrows
     void verifyNoInflightRequests_OnCacheHit() {
-        RESPONSE_CACHE.put(CACHE_KEY, new DomainResponse("CATALOG_FULL", "2026-05-01"));
+        RESPONSE_CACHE.put(CACHE_KEY, new DomainResponse(
+                "CATALOG_FULL",
+                "2026-05-01",
+                "COMPLETED"));
         Assertions.assertEquals(0, DEPENDENCY_INVOCATION_COUNTER.get());
         var parallelRequests = Runtime.getRuntime().availableProcessors();
         List<CompletableFuture<DomainResponse>> futures = Collections.synchronizedList(new ArrayList<>());
@@ -100,7 +103,7 @@ class SingleInstanceStampedeProtectorTest {
             log.log(Level.INFO, "{0} fetching from catalog service via request: {1}",
                     new Object[]{Thread.currentThread().getName(),request});
             Thread.sleep(Duration.ofSeconds(5));
-            var responseFromDependencySvc = new DomainResponse("CATALOG_FULL", request);
+            var responseFromDependencySvc = new DomainResponse("CATALOG_FULL", request, "COMPLETED");
             RESPONSE_CACHE.put(cacheKey, responseFromDependencySvc);
             DEPENDENCY_INVOCATION_COUNTER.incrementAndGet();
             return Try.success(responseFromDependencySvc);
