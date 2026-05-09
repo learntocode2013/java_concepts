@@ -18,17 +18,17 @@
         </plugins>
     </build>
     <modules>
-      <module>http2checker</module>
-<!--      <module>exception_handling</module>-->
-      <module>date_and_time</module>
-      <module>sealed_design</module>
-      <module>records_design</module>
-      <module>fluent_expressions</module>
-      <module>functional_pipelines</module>
-      <module>db_partitioning</module>
-      <module>cqrs_model_updater</module>
-      <module>event_sourcing</module>
-      <module>stampede_protection</module>
+        <module>http2checker</module>
+        <module>date_and_time</module>
+        <module>sealed_design</module>
+        <module>records_design</module>
+        <module>fluent_expressions</module>
+        <module>functional_pipelines</module>
+        <module>db_partitioning</module>
+        <module>cqrs_model_updater</module>
+        <module>event_sourcing</module>
+        <module>stampede_protection</module>
+        <module>lock_free_programming</module>
     </modules>
     <packaging>pom</packaging>
 
