@@ -67,7 +67,7 @@ This example demonstrates how to use the AQS framework to build a simple mutex.
 ```java
 import java.util.concurrent.locks.AbstractQueuedSynchronizer;
 
-public class SimpleMutex {
+public class SimpleNonReEntrantMutex {
     // Inner helper class to handle the state
     private static class Sync extends AbstractQueuedSynchronizer {
         // Try to acquire the lock (0 -> 1)
