@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>AtomicReference in Lock-Free Programming</title>
+<style>
+  :root {
+    --bg: #ffffff;
+    --fg: #24292f;
+    --muted: #57606a;
+    --accent: #0969da;
+    --border: #d0d7de;
+    --code-bg: #f6f8fa;
+    --code-fg: #1f2328;
+    --kbd-bg: #f6f8fa;
+    --table-stripe: #f6f8fa;
+  }
+  html { box-sizing: border-box; }
+  *, *::before, *::after { box-sizing: inherit; }
+  body {
+    margin: 0 auto;
+    max-width: 880px;
+    padding: 32px 24px 64px;
+    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    color: var(--fg);
+    background: var(--bg);
+  }
+  h1 {
+    font-size: 28px;
+    margin: 0 0 8px;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 8px;
+  }
+  h2 {
+    font-size: 22px;
+    margin: 32px 0 12px;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 6px;
+  }
+  h3 { font-size: 18px; margin: 24px 0 8px; }
+  p { margin: 12px 0; }
+  ul, ol { margin: 12px 0; padding-left: 28px; }
+  li { margin: 4px 0; }
+  code, pre, kbd {
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    font-size: 13.5px;
+  }
+  p code, li code, td code {
+    background: var(--code-bg);
+    color: var(--code-fg);
+    padding: 1px 6px;
+    border-radius: 4px;
+  }
+  pre {
+    background: var(--code-bg);
+    color: var(--code-fg);
+    padding: 14px 16px;
+    border-radius: 8px;
+    overflow-x: auto;
+    line-height: 1.45;
+    margin: 14px 0;
+    border: 1px solid var(--border);
+  }
+  pre code { background: transparent; padding: 0; }
+  table {
+    border-collapse: collapse;
+    margin: 16px 0;
+    width: 100%;
+  }
+  th, td {
+    border: 1px solid var(--border);
+    padding: 8px 12px;
+    text-align: left;
+    vertical-align: top;
+  }
+  th { background: var(--code-bg); }
+  tr:nth-child(even) td { background: var(--table-stripe); }
+  blockquote {
+    margin: 14px 0;
+    padding: 6px 14px;
+    border-left: 4px solid var(--accent);
+    color: var(--muted);
+    background: var(--code-bg);
+  }
+  .lead { color: var(--muted); font-size: 15px; }
+  .callout {
+    border: 1px solid var(--border);
+    border-left: 4px solid var(--accent);
+    padding: 10px 14px;
+    background: var(--code-bg);
+    border-radius: 4px;
+    margin: 14px 0;
+  }
+  hr { border: 0; border-top: 1px solid var(--border); margin: 24px 0; }
+  /* Minimal token highlighting */
+  .kw { color: #cf222e; }
+  .ty { color: #8250df; }
+  .st { color: #0a3069; }
+  .nm { color: #953800; }
+  .cm { color: #6e7781; font-style: italic; }
+  .lt { color: #0550ae; }
+</style>
+</head>
+<body>
+
+<h1>AtomicReference in Lock-Free Programming</h1>
+<p class="lead">A practical tour: the CAS mental model, the canonical patterns, the pitfalls, and where it sits relative to <code>synchronized</code> and <code>ReentrantLock</code>.</p>
+
+<h2><code>AtomicReference&lt;V&gt;</code> &mdash; what it is</h2>
+
+<p>A wrapper around a single object reference that exposes <strong>hardware-level atomic operations</strong> on it: <code>get</code>, <code>set</code>, and crucially <code>compareAndSet(expected, new)</code>. The CAS operation compiles down to a CPU instruction (<code>CMPXCHG</code> on x86, <code>LDXR/STXR</code> on ARM) &mdash; no JVM monitor, no OS park, no context switch. That's the foundation of lock-free programming on the JVM.</p>
+
+<p>The mental model:</p>
+
+<pre><code><span class="kw">boolean</span> compareAndSet(V expected, V update) {
+    <span class="kw">if</span> (currentValue == expected) {   <span class="cm">// atomic, in CPU silicon</span>
+        currentValue = update;
+        <span class="kw">return</span> <span class="lt">true</span>;
+    }
+    <span class="kw">return</span> <span class="lt">false</span>;
+}
+</code></pre>
+
+<p>The check-and-write happens as a single uninterruptible step. No thread can observe a half-updated state, and no thread can sneak in between the read and the write.</p>
+
+<h2>The &ldquo;rebase&rdquo; loop &mdash; the standard lock-free idiom</h2>
+
+<p>You almost never call <code>compareAndSet</code> once. You call it in a retry loop:</p>
+
+<pre><code><span class="ty">AtomicReference&lt;Snapshot&gt;</span> ref = ...;
+<span class="kw">while</span> (<span class="lt">true</span>) {
+    <span class="ty">Snapshot</span> current = ref.get();       <span class="cm">// 1. observe</span>
+    <span class="ty">Snapshot</span> updated = derive(current); <span class="cm">// 2. compute new state, pure function</span>
+    <span class="kw">if</span> (ref.compareAndSet(current, updated)) {
+        <span class="kw">break</span>;                           <span class="cm">// 3. publish &mdash; success</span>
+    }
+    <span class="cm">// 4. someone else won the race; loop and try again with their new state</span>
+}
+</code></pre>
+
+<p>The pattern: <strong>read &rarr; derive &rarr; CAS &rarr; retry if stale</strong>. This is the &ldquo;rebase&rdquo; model &mdash; like a <code>git rebase</code> where you re-do your work against whatever the latest state is. The thread never blocks; it just keeps recomputing. Java 8+ wraps the loop for you in <code>updateAndGet</code> / <code>accumulateAndGet</code>:</p>
+
+<pre><code>ref.updateAndGet(current -&gt; derive(current));
+</code></pre>
+
+<h2>Example 1: lock-free lazy initialization</h2>
+
+<p>Naive version with a lock would synchronize the whole method. Lock-free:</p>
+
+<pre><code><span class="kw">public final class</span> <span class="ty">Cache</span>&lt;T&gt; {
+    <span class="kw">private final</span> <span class="ty">AtomicReference</span>&lt;T&gt; value = <span class="kw">new</span> <span class="ty">AtomicReference</span>&lt;&gt;();
+    <span class="kw">private final</span> <span class="ty">Supplier</span>&lt;T&gt; factory;
+
+    <span class="kw">public</span> <span class="nm">Cache</span>(<span class="ty">Supplier</span>&lt;T&gt; factory) { <span class="kw">this</span>.factory = factory; }
+
+    <span class="kw">public</span> T <span class="nm">get</span>() {
+        T existing = value.get();
+        <span class="kw">if</span> (existing != <span class="lt">null</span>) <span class="kw">return</span> existing;          <span class="cm">// fast path: already cached</span>
+        T candidate = factory.get();                    <span class="cm">// possibly expensive</span>
+        <span class="kw">return</span> value.compareAndSet(<span class="lt">null</span>, candidate)
+                ? candidate                             <span class="cm">// we won &mdash; publish ours</span>
+                : value.get();                          <span class="cm">// someone else won &mdash; use theirs</span>
+    }
+}
+</code></pre>
+
+<p><strong>What's lock-free about this:</strong> zero blocking. Two threads can race; one wins the CAS, one wastes the <code>factory.get()</code> call. No one waits. The contention cost is &ldquo;occasionally compute twice&rdquo; instead of &ldquo;always wait.&rdquo;</p>
+
+<p>When <code>factory.get()</code> is expensive <em>and</em> concurrent calls are rare, this is the wrong trade. When the value is small / cheap to compute and threads pile in, it crushes a synchronized <code>if (value == null) ...</code> block.</p>
+
+<h2>Example 2: lock-free Treiber stack (the canonical example)</h2>
+
+<p>This is Exercise 2 from your Devoxx notes. A stack where <code>push</code> and <code>pop</code> never block:</p>
+
+<pre><code><span class="kw">public final class</span> <span class="ty">LockFreeStack</span>&lt;E&gt; {
+    <span class="kw">private static final class</span> <span class="ty">Node</span>&lt;E&gt; {
+        <span class="kw">final</span> E value;
+        <span class="kw">final</span> <span class="ty">Node</span>&lt;E&gt; next;
+        <span class="nm">Node</span>(E value, <span class="ty">Node</span>&lt;E&gt; next) { <span class="kw">this</span>.value = value; <span class="kw">this</span>.next = next; }
+    }
+
+    <span class="kw">private final</span> <span class="ty">AtomicReference</span>&lt;<span class="ty">Node</span>&lt;E&gt;&gt; head = <span class="kw">new</span> <span class="ty">AtomicReference</span>&lt;&gt;();
+
+    <span class="kw">public void</span> <span class="nm">push</span>(E value) {
+        <span class="ty">Node</span>&lt;E&gt; oldHead;
+        <span class="ty">Node</span>&lt;E&gt; newHead;
+        <span class="kw">do</span> {
+            oldHead = head.get();
+            newHead = <span class="kw">new</span> <span class="ty">Node</span>&lt;&gt;(value, oldHead);
+        } <span class="kw">while</span> (!head.compareAndSet(oldHead, newHead));
+    }
+
+    <span class="kw">public</span> E <span class="nm">pop</span>() {
+        <span class="ty">Node</span>&lt;E&gt; oldHead;
+        <span class="ty">Node</span>&lt;E&gt; newHead;
+        <span class="kw">do</span> {
+            oldHead = head.get();
+            <span class="kw">if</span> (oldHead == <span class="lt">null</span>) <span class="kw">return</span> <span class="lt">null</span>;
+            newHead = oldHead.next;
+        } <span class="kw">while</span> (!head.compareAndSet(oldHead, newHead));
+        <span class="kw">return</span> oldHead.value;
+    }
+}
+</code></pre>
+
+<p>What makes this safe:</p>
+<ul>
+  <li>The <code>Node</code> is <strong>immutable</strong> (both fields are <code>final</code>). Once published, no one mutates it, so readers seeing <code>oldHead.next</code> always see a consistent next pointer.</li>
+  <li>The CAS on <code>head</code> is the single linearization point. The reader of <code>head</code> either sees the value before your push or after &mdash; never half-pushed.</li>
+  <li>The new node is constructed <em>outside</em> the CAS, so even if you retry, the cost is just allocation, not a held lock.</li>
+</ul>
+
+<p>What threads do under contention: they spin. There's no parking, no kernel transition, no <code>ObjectMonitor</code>. That's the dramatic perf advantage you saw between <code>synchronized</code> (3.2&nbsp;s) and <code>ReentrantLock</code> (0.4&nbsp;s); a CAS-based version would beat both at low-to-moderate contention.</p>
+
+<h2>Example 3: a versioned snapshot (state machine update)</h2>
+
+<p>When you want to atomically replace a compound state &mdash; e.g. a configuration bundle:</p>
+
+<pre><code><span class="kw">public final class</span> <span class="ty">Config</span> {
+    <span class="kw">final</span> <span class="ty">String</span> host;
+    <span class="kw">final int</span> port;
+    <span class="kw">final</span> <span class="ty">Duration</span> timeout;
+    <span class="nm">Config</span>(<span class="ty">String</span> h, <span class="kw">int</span> p, <span class="ty">Duration</span> t) { host = h; port = p; timeout = t; }
+}
+
+<span class="kw">private final</span> <span class="ty">AtomicReference</span>&lt;<span class="ty">Config</span>&gt; current = <span class="kw">new</span> <span class="ty">AtomicReference</span>&lt;&gt;(initial);
+
+<span class="kw">public void</span> <span class="nm">updatePort</span>(<span class="kw">int</span> newPort) {
+    current.updateAndGet(c -&gt; <span class="kw">new</span> <span class="ty">Config</span>(c.host, newPort, c.timeout));
+}
+
+<span class="kw">public</span> <span class="ty">Config</span> <span class="nm">snapshot</span>() {
+    <span class="kw">return</span> current.get();   <span class="cm">// readers never block, never see a torn state</span>
+}
+</code></pre>
+
+<p>A reader getting <code>current.get()</code> always sees a fully-constructed <code>Config</code>. Writers race but only one wins each round; losers re-derive from the latest. No lock, no <code>volatile</code> discipline beyond what <code>AtomicReference</code> already gives you.</p>
+
+<p>This is how libraries like Caffeine, Disruptor, and many event-loop engines manage their hot state.</p>
+
+<h2>Example 4: lock-free idempotent flag</h2>
+
+<p>Sometimes you just want &ldquo;exactly one thread enters this block, the rest skip&rdquo;:</p>
+
+<pre><code><span class="kw">private final</span> <span class="ty">AtomicReference</span>&lt;<span class="ty">State</span>&gt; state = <span class="kw">new</span> <span class="ty">AtomicReference</span>&lt;&gt;(<span class="ty">State</span>.NEW);
+
+<span class="kw">enum</span> <span class="ty">State</span> { NEW, STARTED, STOPPED }
+
+<span class="kw">public void</span> <span class="nm">start</span>() {
+    <span class="kw">if</span> (state.compareAndSet(<span class="ty">State</span>.NEW, <span class="ty">State</span>.STARTED)) {
+        actuallyStart();  <span class="cm">// exactly one caller reaches here</span>
+    }
+}
+</code></pre>
+
+<p>A single CAS is enough &mdash; no loop needed because the transition is one-shot. This pattern shows up everywhere: shutdown latches, one-time initialization, leader election within a process.</p>
+
+<h2>The ABA pitfall</h2>
+
+<p>CAS asks &ldquo;is the value still <code>expected</code>?&rdquo; but it can't tell the difference between &ldquo;unchanged&rdquo; and &ldquo;changed away and then changed back.&rdquo; Consider:</p>
+
+<ol>
+  <li>Thread A reads <code>head</code> &rarr; node <code>X</code>.</li>
+  <li>Thread A computes <code>newHead = X.next</code>.</li>
+  <li>Thread B <code>pop</code>s X, <code>pop</code>s its successor, then <code>push</code>es a new node that happens to reuse X's memory &mdash; now <code>head</code> is <code>X</code> again, but the rest of the list is different.</li>
+  <li>Thread A's CAS succeeds &mdash; <code>head == X</code> &mdash; but <code>newHead = X.next</code> is stale data from step 2, pointing into a list that no longer exists.</li>
+</ol>
+
+<p>Java mitigates this somewhat (GC keeps <code>X</code> alive as long as A holds a reference, so memory isn't reused), but logically equivalent ABA still bites with object pooling, recycled buffers, or sequence counters.</p>
+
+<p><strong>Solution:</strong> stamp the reference with a version counter that increments on every change, so &ldquo;A &rarr; B &rarr; A&rdquo; is detectable as &ldquo;stamp went 0 &rarr; 1 &rarr; 2&rdquo;:</p>
+
+<pre><code><span class="ty">AtomicStampedReference</span>&lt;<span class="ty">Node</span>&lt;E&gt;&gt; head = <span class="kw">new</span> <span class="ty">AtomicStampedReference</span>&lt;&gt;(<span class="lt">null</span>, 0);
+
+<span class="kw">int</span>[] stampHolder = <span class="kw">new int</span>[1];
+<span class="ty">Node</span>&lt;E&gt; oldHead = head.get(stampHolder);
+<span class="kw">int</span> oldStamp = stampHolder[0];
+<span class="cm">// ...</span>
+head.compareAndSet(oldHead, newHead, oldStamp, oldStamp + 1);
+</code></pre>
+
+<p>Now the CAS fails if the stamp moved, even when the reference looks identical. (This is Exercise 3 in your Devoxx notes.)</p>
+
+<p><code>AtomicMarkableReference</code> is the cheaper cousin: one boolean instead of an int counter, useful when &ldquo;is this node logically deleted?&rdquo; is the only extra bit you need.</p>
+
+<h2>When NOT to reach for <code>AtomicReference</code></h2>
+
+<p>Lock-free is not free. Consider sticking with a lock when:</p>
+
+<ol>
+  <li><strong>The critical section does more than one field's worth of work.</strong> CAS works on a single reference. If you need to atomically update three fields, you either bundle them into one immutable object (extra allocation per update) or you need transactional plumbing. A <code>synchronized</code> block is often cheaper.</li>
+  <li><strong>Contention is high <em>and sustained</em>.</strong> Under heavy contention CAS loops spin &mdash; burning CPU, generating cache-line ping-pong between cores. With dozens of writers, a fair-ish lock with parking can outperform a CAS loop. Benchmark.</li>
+  <li><strong>You need ordering across multiple variables.</strong> <code>AtomicReference</code> only orders accesses to <em>itself</em>. If you need to publish &ldquo;field X then field Y&rdquo;, you need a single reference to a holder object containing both, or you need explicit <code>VarHandle</code> fences.</li>
+  <li><strong>You'd write a single-counter increment.</strong> Use <code>AtomicLong</code> / <code>LongAdder</code> instead &mdash; they're specialized and faster (especially <code>LongAdder</code> under contention, which striped-counters to avoid the cache-line war).</li>
+</ol>
+
+<h2>Where it fits in your concurrency hierarchy</h2>
+
+<p>From your <code>Locks_Monitors_And_Atomics.md</code> table:</p>
+
+<table>
+  <thead>
+    <tr><th>Layer</th><th>Mechanism</th><th>Where contention is paid</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>JVM monitors</td><td><code>synchronized</code> / <code>ObjectMonitor</code></td><td>Park + stranding cost in C++</td></tr>
+    <tr><td>AQS</td><td><code>ReentrantLock</code>, <code>Semaphore</code>, &hellip;</td><td>Park via <code>LockSupport</code>, FIFO queue in Java</td></tr>
+    <tr><td>Hardware</td><td><code>Atomic*</code>, <code>VarHandle</code></td><td>Spin in CPU; cache-line bouncing</td></tr>
+  </tbody>
+</table>
+
+<p><code>AtomicReference</code> is the bottom row. It's the building block you'd reach for to implement the <em>non-blocking</em> version of anything in the upper rows &mdash; a lock-free queue (&agrave; la Michael-Scott), a lock-free set, a counter, a flag. The trade-off is always: avoid blocking by retrying optimistically, at the cost of wasted work under contention and the responsibility of getting the memory model right.</p>
+
+<div class="callout">
+  <strong>Next steps from the Devoxx exercises:</strong> If you want to try this hands-on, Exercise 2 (Treiber stack) is the cleanest first build; Exercise 3 (reproducing ABA and fixing it with <code>AtomicStampedReference</code>) is the natural follow-up.
+</div>
+
+</body>
+</html>
