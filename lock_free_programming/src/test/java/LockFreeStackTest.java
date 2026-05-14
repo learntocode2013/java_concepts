@@ -241,10 +241,11 @@ class LockFreeStackTest {
         Field headField = LockFreeStack.class.getDeclaredField("head");
         headField.setAccessible(true);
         @SuppressWarnings("unchecked")
-        AtomicReference<Object> headRef = (AtomicReference<Object>) headField.get(stack);
-
+        AtomicStampedReference<Object> headRef = (AtomicStampedReference<Object>) headField.get(stack);
+        int[] stampHolder = new int[1];
         // === Thread A: snapshot head and plan its CAS, then "pause" ===
-        Object threadA_oldHead = headRef.get();                                 // Node(3, next=Node(2,...))
+        Object threadA_oldHead = headRef.get(stampHolder);                                 // Node(3, next=Node(2,...))
+        int currentStamp = stampHolder[0];
         Field nextField = threadA_oldHead.getClass().getDeclaredField("next");
         nextField.setAccessible(true);
         Object threadA_plannedNewHead = nextField.get(threadA_oldHead);         // Node(2, next=Node(1,...))
@@ -260,21 +261,21 @@ class LockFreeStackTest {
         // In C/C++ this is what a slab allocator handing back the same address
         // looks like. In Java we have to do it by hand via reflection because
         // push() will not reinstall a popped Node object.
-        headRef.set(threadA_oldHead);
+        headRef.set(threadA_oldHead, currentStamp + 1);
 
         // === Thread A resumes and performs its CAS ===
-        boolean abaCasSucceeded = headRef.compareAndSet(threadA_oldHead, threadA_plannedNewHead);
+        boolean abaCasSucceeded = headRef.compareAndSet(threadA_oldHead, threadA_plannedNewHead, currentStamp, currentStamp + 1);
 
-        assertTrue(abaCasSucceeded,
+        assertFalse(abaCasSucceeded,
                 "CAS succeeded even though the stack was drained and a stale reference was restored — this IS ABA");
 
         // The observable corruption: pop() now returns values that were already
         // returned to earlier callers. A real consumer would see duplicates or
         // process the same work twice.
-        assertEquals(2, stack.pop(),
+        assertEquals(3, stack.pop(),
                 "stack returned a previously-popped value — silent integrity violation caused by ABA");
+        assertEquals(2, stack.pop());
         assertEquals(1, stack.pop());
-        assertNull(stack.pop());
     }
 
     /**
