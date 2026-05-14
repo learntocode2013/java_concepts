@@ -136,6 +136,43 @@ public class BoundedBuffer {
 2.  **Targeted Signaling:** Instead of waking *everyone* (notifyAll), we only wake the threads waiting to `take` when we `put` something.
 
 ---
+### 4. Stranding definition
+
+Threads that could run remain stuck parked, while the lock they were waiting on sits empty.
+
+It's a wake-up latency problem specific to synchronized / ObjectMonitor. Here's the mechanics:
+
+What happens when threads block on synchronized
+
+Once a synchronized lock has more than one contender, it inflates from a thin/lightweight lock into a heavyweight ObjectMonitor (a C++ structure in
+HotSpot). Threads that can't acquire it get parked by the OS — typically inside _pthread_cond_wait (you saw this in your crash log).
+
+The release sequence is roughly:
+
+1. Owner finishes the critical section, drops the lock.
+2. Owner picks a "successor" from the queue and signals/unparks it.
+3. OS schedules the successor onto a CPU.
+4. Successor wakes, re-checks the lock, acquires it.
+
+Between step 1 and step 4 the lock is unowned but nobody is running with it. If the OS is slow to schedule the woken thread (which on a contended machine
+can be 10 µs to several ms), every parked waiter just sits there, hands tied, even though any one of them could have grabbed the lock immediately. They're
+stranded.
+
+Why synchronized makes it worse than ReentrantLock
+
+The ObjectMonitor handoff protocol is opaque, lives in C++, and has historically traded throughput for some fairness/cache-locality heuristics. A few
+specifics that contribute to stranding:
+
+- Responsibility model: only the chosen successor is unparked, not all waiters. If the successor is slow to wake (preempted, on a parked core, evicted
+  from cache), no one else takes the lock — they're not even allowed to try until the successor either acquires or re-enters the queue.
+- Spinning vs parking heuristics: HotSpot tries adaptive spinning before parking. The thresholds are tuned for average cases and can leave threads parked
+  when they should be spinning, or spinning when they should be parked.
+- Safepoint interactions: GC safepoints, deopts, and biased-lock revocation can extend the gap further.
+- Coarse OS wakeup paths: unpark → kernel scheduler → POSIX condvar signal → context switch is a long chain.
+
+ReentrantLock doesn't suffer this as badly because it's pure Java built on AbstractQueuedSynchronizer. The CLH queue is explicit, the unpark target is
+explicit, and there are fewer JVM-internal heuristics layered in between. The "lock is free → next waiter runs" gap is shorter and more predictable.
+---
 
 ### 5. Hands-on Exercises
 
